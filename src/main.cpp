@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <MQTT.h>
+#include <sensor.h>
 
 const char SSID[] = "SSID";
 const char SSPW[] = "SSPW";
@@ -10,6 +11,8 @@ int lastValue = LOW;
 
 WiFiClient net;
 MQTTClient mqtt;
+
+Sensor sensor = Sensor("ESP8266", D0, D5);
 
 void messageReceived(String &topic, String &payload) {
   Serial.println("Received: " + topic + ":");
@@ -25,6 +28,13 @@ void mqttConnect() {
     delay(1000);
   }
   Serial.println("MQTT client connected.");
+}
+
+void notifyMqtt(String sensorName, int lastValue, int newValue, int count) {
+    char payload[100];
+    sprintf(payload, "{ \"newStatus\": %d, \"oldStatus\": %d }", newValue, lastValue);
+
+    mqtt.publish("sensor/" + sensorName + "/reed", payload);
 }
 
 void setup() {
@@ -43,24 +53,10 @@ void setup() {
   mqttConnect();
 
   Serial.println("Setting up inputs...");
-  pinMode(D0, INPUT);
+  sensor.setup();
+  sensor.registerChangeCallback(notifyMqtt);
+
   delay(2000);
-}
-
-void setSensorValue(int newValue) {
-  if (newValue != lastValue) {
-    if (newValue == HIGH) {
-      Serial.println("Magnetic sensor closed.");
-    } else {
-      Serial.println("Magnetic sensor open!");
-    }
-
-    char payload[100];
-    sprintf(payload, "{ \"newStatus\": %d, \"oldStatus\": %d }", newValue, lastValue);
-
-    mqtt.publish("sensor/" + SENSOR_NAME + "/reed", payload);
-    lastValue = newValue;
-  }
 }
 
 void mqttLoop() {
@@ -74,8 +70,7 @@ void mqttLoop() {
 void loop() {
   mqttLoop();
 
-  int val = digitalRead(D0);
-  setSensorValue(val);
+  sensor.readValue();
 
   delay(500);
 }
