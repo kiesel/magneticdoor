@@ -21,7 +21,18 @@ void Sensor::registerChangeCallback(void (* callbackFunc)(String sensorname, int
 }
 
 void Sensor::readValue() {
+
+  // Turn on power
+  digitalWrite(this->powerPin, HIGH);
+
+  // Wait, then read value
+  delay(5);
   int value = digitalRead(this->readPin);
+
+  // Turn off the power
+  digitalWrite(this->powerPin, LOW);
+
+  // Check results
   if (value != this->lastValue) {
     if (value == HIGH) {
       Serial.println("Magnetic sensor closed.");

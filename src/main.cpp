@@ -5,14 +5,12 @@
 
 const char SSID[] = "SSID";
 const char SSPW[] = "SSPW";
-
-const String SENSOR_NAME = "ESP8266";
-int lastValue = LOW;
+const String DEPLOYMENT_NAME = "prototype";
 
 WiFiClient net;
 MQTTClient mqtt;
 
-Sensor sensor = Sensor("ESP8266", D0, D5);
+Sensor sensor = Sensor("door1", D1, D2);
 
 void messageReceived(String &topic, String &payload) {
   Serial.println("Received: " + topic + ":");
@@ -32,9 +30,9 @@ void mqttConnect() {
 
 void notifyMqtt(String sensorName, int lastValue, int newValue, int count) {
     char payload[100];
-    sprintf(payload, "{ \"newStatus\": %d, \"oldStatus\": %d }", newValue, lastValue);
+    sprintf(payload, "{ \"status\": %d, \"oldStatus\": %d, \"changes\": %d, millis: %d }", newValue, lastValue, count, millis());
 
-    mqtt.publish("sensor/" + sensorName + "/reed", payload);
+    mqtt.publish("sensor/" + DEPLOYMENT_NAME + "/" + sensorName, payload);
 }
 
 void setup() {
@@ -42,12 +40,14 @@ void setup() {
   Serial.println("Booting device...");
 
   // Connect to network
-  WiFi.begin(SSID, SSPW);
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.print(".");
-    delay(1000);
+  if (WiFi.SSID() != SSID) {
+    WiFi.begin(SSID, SSPW);
+    while (WiFi.status() != WL_CONNECTED) {
+      Serial.print(".");
+      delay(1000);
+    }
+    Serial.println();
   }
-  Serial.println();
 
   // Connect to mqtt
   mqttConnect();
