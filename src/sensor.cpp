@@ -6,7 +6,7 @@ Sensor::Sensor(String name, int readPin, int powerPin) {
   this->readPin = readPin;
   this->powerPin = powerPin;
   this->counter = 0;
-  this->lastValue = LOW;
+  this->lastValue = -1;
   this->callbackFunc = NULL;
 }
 
@@ -34,11 +34,7 @@ void Sensor::readValue() {
 
   // Check results
   if (value != this->lastValue) {
-    if (value == HIGH) {
-      Serial.println("Magnetic sensor closed.");
-    } else {
-      Serial.println("Magnetic sensor open!");
-    }
+    Serial.printf("Sensor %s %s.\n", this->name.c_str(), value == HIGH ? "closed." : "open!");
 
     this->counter++;
 

@@ -5,14 +5,18 @@
 #include "sensor.h"
 
 
-const char* MQTT_HOST = "192.168.0.129";
-const String DEPLOYMENT_NAME = "prototype";
+const char* MQTT_HOST = "192.168.0.10";
+const String DEPLOYMENT_NAME = "eggleo";
 
 WiFiClient net;
 MQTTClient mqtt;
 WiFiManager wifiManager;
 
-Sensor sensor = Sensor("door1", D1, D2);
+const int NO_SENSORS = 2;
+Sensor sensors[NO_SENSORS] = {
+  Sensor("livingroom-right", D1, D2),
+  Sensor("livingroom-left", D5, D6)
+};
 
 void messageReceived(String &topic, String &payload) {
   Serial.println("Received: " + topic + ":");
@@ -24,7 +28,7 @@ void mqttConnect() {
   Serial.printf("Attempting to connect to %s\n", MQTT_HOST);
   mqtt.begin(MQTT_HOST, net);
   mqtt.onMessage(messageReceived);
-  while (!mqtt.connect("esp8266", "try", "try")) {
+  while (!mqtt.connect(DEPLOYMENT_NAME.c_str(), "try", "try")) {
     Serial.print(".");
     delay(1000);
   }
@@ -33,7 +37,7 @@ void mqttConnect() {
 
 void notifyMqtt(String sensorName, int lastValue, int newValue, int count) {
     char payload[100];
-    sprintf(payload, "{ \"status\": %d, \"oldStatus\": %d, \"changes\": %d, millis: %d }", newValue, lastValue, count, (int)millis());
+    sprintf(payload, "{ \"status\": %d, \"prevStatus\": %d, \"changes\": %d, millis: %d }", newValue, lastValue, count, (int)millis());
 
     mqtt.publish("sensor/" + DEPLOYMENT_NAME + "/" + sensorName, payload);
 }
@@ -49,8 +53,10 @@ void setup() {
   mqttConnect();
 
   Serial.println("Setting up inputs...");
-  sensor.setup();
-  sensor.registerChangeCallback(notifyMqtt);
+  for (int i = 0; i < NO_SENSORS; i++) {
+    sensors[i].setup();
+    sensors[i].registerChangeCallback(notifyMqtt);
+  }
 
   delay(2000);
 }
@@ -66,7 +72,9 @@ void mqttLoop() {
 void loop() {
   mqttLoop();
 
-  sensor.readValue();
+  for (int i = 0; i < NO_SENSORS; i++) {
+    sensors[i].readValue();
+  }
 
   delay(500);
 }
