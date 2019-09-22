@@ -37,7 +37,7 @@ void mqttConnect() {
 
 void notifyMqtt(String sensorName, int lastValue, int newValue, int count) {
     char payload[100];
-    sprintf(payload, "{ \"status\": %d, \"prevStatus\": %d, \"changes\": %d, millis: %d }", newValue, lastValue, count, (int)millis());
+    sprintf(payload, "{ \"status\": %d, \"prevStatus\": %d, \"changes\": %d, \"millis\": %d }", newValue, lastValue, count, (int)millis());
 
     mqtt.publish("sensor/" + DEPLOYMENT_NAME + "/" + sensorName, payload);
 }
