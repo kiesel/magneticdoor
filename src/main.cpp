@@ -2,15 +2,18 @@
 #include <ESP8266WiFi.h>
 #include <MQTT.h>
 #include <WiFiManager.h>
+#include <RTCVars.h>
 #include "sensor.h"
-
-
-const char* MQTT_HOST = "192.168.0.10";
-const String DEPLOYMENT_NAME = "eggleo";
 
 WiFiClient net;
 MQTTClient mqtt;
 WiFiManager wifiManager;
+RTCVars state;
+bool wifiConnected = false;
+
+const int SERIAL_SPEED = 115200;
+const char* MQTT_HOST = "192.168.0.10";
+const String DEPLOYMENT_NAME = "eggleo";
 
 const int NO_SENSORS = 2;
 Sensor sensors[NO_SENSORS] = {
@@ -18,13 +21,27 @@ Sensor sensors[NO_SENSORS] = {
   Sensor("livingroom-left", D5, D6)
 };
 
+int reset_counter;
+
 void messageReceived(String &topic, String &payload) {
   Serial.println("Received: " + topic + ":");
   Serial.println(payload);
   Serial.print("----\n");
 }
 
+void wifiConnect() {
+  if (!wifiConnected) {
+    wifiManager.autoConnect();
+    wifiConnected = true;
+  }
+}
+
 void mqttConnect() {
+  wifiConnect();
+  if (mqtt.connected()) {
+    return;
+  }
+
   Serial.printf("Attempting to connect to %s\n", MQTT_HOST);
   mqtt.begin(MQTT_HOST, net);
   mqtt.onMessage(messageReceived);
@@ -32,49 +49,82 @@ void mqttConnect() {
     Serial.print(".");
     delay(1000);
   }
+
   Serial.println("MQTT client connected.");
 }
 
 void notifyMqtt(String sensorName, int lastValue, int newValue, int count) {
-    char payload[100];
-    sprintf(payload, "{ \"status\": %d, \"prevStatus\": %d, \"changes\": %d, \"millis\": %d }", newValue, lastValue, count, (int)millis());
+    char payload[255];
+    sprintf(
+      payload,
+      "{ \"sensor\": \"%s\", \"status\": %d, \"prevStatus\": %d, \"changes\": %d, \"millis\": %d, \"resets\": %d }",
+      sensorName.c_str(),
+      newValue,
+      lastValue,
+      count,
+      (int)millis(),
+      reset_counter
+    );
+
+    Serial.printf("About to publish MQTT message: %s\n", payload);
+    mqttConnect();
 
     mqtt.publish("sensor/" + DEPLOYMENT_NAME + "/" + sensorName, payload);
+    Serial.println("Message published!");
 }
 
 void setup() {
-  Serial.begin(9600);
-  while (!Serial) {}
+  delay(1000);
+  if (!Serial) {
+    Serial.begin(SERIAL_SPEED);
+    while (!Serial) {}
+  }
+
   Serial.println("Booting device...");
 
-  wifiManager.autoConnect();
+  state.registerVar(&reset_counter);
 
-  // Connect to mqtt
-  mqttConnect();
-
-  Serial.println("Setting up inputs...");
+  Serial.print("Setting up inputs... ");
   for (int i = 0; i < NO_SENSORS; i++) {
+    Serial.printf("%d, ", i+ 1);
+    sensors[i].registerInState(state);
     sensors[i].setup();
     sensors[i].registerChangeCallback(notifyMqtt);
   }
+  Serial.println();
 
-  delay(2000);
-}
+  if (state.loadFromRTC()) {
+    // warm boot
+    Serial.println("Waking up from deep sleep...");
+    state.debugOutputRTCVars();
 
-void mqttLoop() {
-  mqtt.loop();
-  if (!mqtt.connected()) {
-    Serial.println("MQTT disconnected!");
-    mqttConnect();
+  } else {
+    Serial.println("Running a cold boot.");
+
+    reset_counter = 0;
+
+    // Upon cold boot, invoke wifiManager, so it can do its work: in case there is no registered Wifi connection
+    // open a new Wifi and allow selection over http interface; otherwise, connect to the known network.
+    wifiConnect();
   }
 }
 
 void loop() {
-  mqttLoop();
+  mqtt.loop();
+
+  bool changed = false;
 
   for (int i = 0; i < NO_SENSORS; i++) {
     sensors[i].readValue();
+    changed |= sensors[i].valueChanged();
   }
 
-  delay(500);
+  if (changed) {
+    Serial.println("Saving new state to RTC memory...");
+    state.saveToRTC();
+  }
+
+  // Deep sleep for 1 second
+  Serial.println("Going to deep sleep!\n\n\n");
+  system_deep_sleep_instant(1000 * 1000);
 }

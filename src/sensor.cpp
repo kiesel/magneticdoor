@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <RTCVars.h>
 #include "sensor.h"
 
 Sensor::Sensor(String name, int readPin, int powerPin) {
@@ -7,6 +8,7 @@ Sensor::Sensor(String name, int readPin, int powerPin) {
   this->powerPin = powerPin;
   this->counter = 0;
   this->lastValue = -1;
+  this->value = -1;
   this->callbackFunc = NULL;
 }
 
@@ -20,6 +22,10 @@ void Sensor::registerChangeCallback(void (* callbackFunc)(String sensorname, int
   this->callbackFunc = callbackFunc;
 }
 
+void Sensor::registerInState(RTCVars state) {
+  state.registerVar(&this->lastValue);
+}
+
 void Sensor::readValue() {
 
   // Turn on power
@@ -27,22 +33,31 @@ void Sensor::readValue() {
 
   // Wait, then read value
   delay(5);
-  int value = digitalRead(this->readPin);
+  this->value = digitalRead(this->readPin);
 
   // Turn off the power
   digitalWrite(this->powerPin, LOW);
 
   // Check results
-  if (value != this->lastValue) {
-    Serial.printf("Sensor %s %s.\n", this->name.c_str(), value == HIGH ? "closed." : "open!");
+  if (this->value != this->lastValue) {
+    Serial.printf("Sensor %s %s.\n", this->name.c_str(), this->value == HIGH ? "closed." : "open!");
 
     this->counter++;
 
     if (this->callbackFunc != NULL) {
-      this->callbackFunc(this->name, this->lastValue, value, this->counter);
+      this->callbackFunc(this->name, this->lastValue, this->value, this->counter);
     }
 
     this->lastValue = value;
   }
 }
 
+bool Sensor::valueChanged() {
+  return this->value != this->lastValue;
+}
+
+void Sensor::completeReading() {
+  if (this->valueChanged()) {
+    this->lastValue = this->value;
+  }
+}

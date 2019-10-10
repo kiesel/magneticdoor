@@ -8,6 +8,7 @@ class Sensor {
     int powerPin;
     int counter;
     int lastValue;
+    int value;
 
   private:
     void (* callbackFunc)(String sensorname, int lastVal, int newVal, int count);
@@ -16,7 +17,10 @@ class Sensor {
     Sensor(String name, int readPin, int powerPin);
     void setup();
     void readValue();
+    bool valueChanged();
+    void completeReading();
     void registerChangeCallback(void (* callbackFunc)(String sensorname, int lastVal, int newVal, int count));
+    void registerInState(RTCVars state);
 };
 
 #endif
