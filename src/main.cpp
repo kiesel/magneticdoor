@@ -82,12 +82,13 @@ void setup() {
 
   Serial.println("Booting device...");
 
+  state.setStateID(0);
   state.registerVar(&reset_counter);
 
   Serial.print("Setting up inputs... ");
   for (int i = 0; i < NO_SENSORS; i++) {
     Serial.printf("%d, ", i+ 1);
-    sensors[i].registerInState(state);
+    sensors[i].registerInState(&state);
     sensors[i].setup();
     sensors[i].registerChangeCallback(notifyMqtt);
   }
@@ -107,6 +108,12 @@ void setup() {
     // open a new Wifi and allow selection over http interface; otherwise, connect to the known network.
     wifiConnect();
   }
+
+  for (int i = 0; i < NO_SENSORS; i++) {
+    sensors[i].toString();
+  }
+
+  printf("This is the %dth run.", reset_counter++);
 }
 
 void loop() {
@@ -116,15 +123,15 @@ void loop() {
 
   for (int i = 0; i < NO_SENSORS; i++) {
     sensors[i].readValue();
-    changed |= sensors[i].valueChanged();
+    sensors[i].toString();
+    printf("sensor value changed? %s\n", sensors[i].valueChanged() ? "yes" : "no");
+    changed = changed || sensors[i].valueChanged();
   }
 
-  if (changed) {
-    Serial.println("Saving new state to RTC memory...");
-    state.saveToRTC();
-  }
+  Serial.println("Saving new state to RTC memory...");
+  state.saveToRTC();
 
   // Deep sleep for 1 second
   Serial.println("Going to deep sleep!\n\n\n");
-  system_deep_sleep_instant(1000 * 1000);
+  system_deep_sleep_instant(10000 * 1000);
 }

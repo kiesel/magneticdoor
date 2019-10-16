@@ -18,9 +18,9 @@ class Sensor {
     void setup();
     void readValue();
     bool valueChanged();
-    void completeReading();
     void registerChangeCallback(void (* callbackFunc)(String sensorname, int lastVal, int newVal, int count));
-    void registerInState(RTCVars state);
+    void registerInState(RTCVars *state);
+    void toString();
 };
 
 #endif

@@ -22,11 +22,15 @@ void Sensor::registerChangeCallback(void (* callbackFunc)(String sensorname, int
   this->callbackFunc = callbackFunc;
 }
 
-void Sensor::registerInState(RTCVars state) {
-  state.registerVar(&this->lastValue);
+void Sensor::registerInState(RTCVars *state) {
+  state->registerVar(&this->value);
 }
 
 void Sensor::readValue() {
+
+  // Before reading new value, shift old one into the corresponding
+  // field, so it can be compared with later on
+  this->lastValue = this->value;
 
   // Turn on power
   digitalWrite(this->powerPin, HIGH);
@@ -47,8 +51,6 @@ void Sensor::readValue() {
     if (this->callbackFunc != NULL) {
       this->callbackFunc(this->name, this->lastValue, this->value, this->counter);
     }
-
-    this->lastValue = value;
   }
 }
 
@@ -56,8 +58,6 @@ bool Sensor::valueChanged() {
   return this->value != this->lastValue;
 }
 
-void Sensor::completeReading() {
-  if (this->valueChanged()) {
-    this->lastValue = this->value;
-  }
+void Sensor::toString() {
+  Serial.printf("Sensor '%s': { last: %d, curr: %d }\n", this->name.c_str(), this->lastValue, this->value);
 }
