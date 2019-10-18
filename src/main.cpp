@@ -31,16 +31,18 @@ void messageReceived(String &topic, String &payload) {
 
 void wifiConnect() {
   if (!wifiConnected) {
+    Serial.println("Need to connect to WiFi ...");
     wifiManager.autoConnect();
     wifiConnected = true;
   }
 }
 
 void mqttConnect() {
-  wifiConnect();
   if (mqtt.connected()) {
+    Serial.println("MQTT already connected, skipping this...");
     return;
   }
+  wifiConnect();
 
   Serial.printf("Attempting to connect to %s\n", MQTT_HOST);
   mqtt.begin(MQTT_HOST, net);
@@ -51,13 +53,23 @@ void mqttConnect() {
   }
 
   Serial.println("MQTT client connected.");
+  mqtt.loop();
+}
+
+void mqttPublish(char* topic, char* payload) {
+  Serial.printf("About to publish MQTT message to topic %s:\n%s\n", topic, payload);
+  mqttConnect();
+
+  mqtt.publish(topic, payload);
+  Serial.println("Message published!");
 }
 
 void notifyMqtt(String sensorName, int lastValue, int newValue, int count) {
     char payload[255];
     sprintf(
       payload,
-      "{ \"sensor\": \"%s\", \"status\": %d, \"prevStatus\": %d, \"changes\": %d, \"millis\": %d, \"resets\": %d }",
+      "{ \"deployment\": \"%s\", \"sensor\": \"%s\", \"status\": %d, \"prevStatus\": %d, \"changes\": %d, \"millis\": %d, \"resets\": %d }",
+      DEPLOYMENT_NAME.c_str(),
       sensorName.c_str(),
       newValue,
       lastValue,
@@ -65,12 +77,28 @@ void notifyMqtt(String sensorName, int lastValue, int newValue, int count) {
       (int)millis(),
       reset_counter
     );
+    char topic[100];
+    sprintf(topic, "sensor/%s/%s", DEPLOYMENT_NAME.c_str(), sensorName.c_str());
 
-    Serial.printf("About to publish MQTT message: %s\n", payload);
-    mqttConnect();
+    mqttPublish(topic, payload);
+}
 
-    mqtt.publish("sensor/" + DEPLOYMENT_NAME + "/" + sensorName, payload);
-    Serial.println("Message published!");
+void sendSystemHealth() {
+  Serial.println("Sending system health ...");
+  char topic[100];
+  sprintf(topic, "sensor/%s/%s", DEPLOYMENT_NAME.c_str(), sensors[0].name.c_str());
+
+  char payload[255];
+  sprintf(
+    payload,
+    "{ \"deployment\": \"%s\", \"sensor\": \"%s\", \"resets\": %d, \"voltage\": %d }",
+    DEPLOYMENT_NAME.c_str(),
+    sensors[0].name.c_str(),
+    reset_counter,
+    ESP.getVcc()
+  );
+
+  mqttPublish(topic, payload);
 }
 
 void setup() {
@@ -108,25 +136,21 @@ void setup() {
     // open a new Wifi and allow selection over http interface; otherwise, connect to the known network.
     wifiConnect();
   }
-
-  for (int i = 0; i < NO_SENSORS; i++) {
-    sensors[i].toString();
-  }
-
-  printf("This is the %dth run.", reset_counter++);
 }
 
 void loop() {
-  mqtt.loop();
-
-  bool changed = false;
-
   for (int i = 0; i < NO_SENSORS; i++) {
     sensors[i].readValue();
+
     sensors[i].toString();
-    printf("sensor value changed? %s\n", sensors[i].valueChanged() ? "yes" : "no");
-    changed = changed || sensors[i].valueChanged();
+    printf("Sensor value changed? %s\n", sensors[i].valueChanged() ? "yes" : "no");
   }
+
+  if (reset_counter % 30 == 0) {
+    sendSystemHealth();
+  }
+
+  printf("This has been the %dth run.\n", reset_counter++);
 
   Serial.println("Saving new state to RTC memory...");
   state.saveToRTC();
