@@ -9,19 +9,19 @@ WiFiClient net;
 MQTTClient mqtt;
 WiFiManager wifiManager;
 RTCVars state;
-bool wifiConnected = false;
 
 const int SERIAL_SPEED = 115200;
 const char* MQTT_HOST = "192.168.0.10";
 const String DEPLOYMENT_NAME = "eggleo";
 
+int reset_counter;
+
+// Configure NO_SENSORS, and an appropriate sensors array:
 const int NO_SENSORS = 2;
 Sensor sensors[NO_SENSORS] = {
   Sensor("livingroom-right", D1, D2),
   Sensor("livingroom-left", D5, D6)
 };
-
-int reset_counter;
 
 void messageReceived(String &topic, String &payload) {
   Serial.println("Received: " + topic + ":");
@@ -30,10 +30,14 @@ void messageReceived(String &topic, String &payload) {
 }
 
 void wifiConnect() {
-  if (!wifiConnected) {
+  if (!WiFi.isConnected()) {
     Serial.println("Need to connect to WiFi ...");
+  }
+
+  while (!WiFi.isConnected()) {
     wifiManager.autoConnect();
-    wifiConnected = true;
+    Serial.print(".");
+    delay(500);
   }
 }
 
@@ -42,39 +46,54 @@ void mqttConnect() {
     Serial.println("MQTT already connected, skipping this...");
     return;
   }
+
   wifiConnect();
 
   Serial.printf("Attempting to connect to %s\n", MQTT_HOST);
   mqtt.begin(MQTT_HOST, net);
   mqtt.onMessage(messageReceived);
-  while (!mqtt.connect(DEPLOYMENT_NAME.c_str(), "try", "try")) {
+
+  while (!mqtt.connected()) {
+    mqtt.connect(DEPLOYMENT_NAME.c_str(), "try", "try");
     Serial.print(".");
     delay(1000);
   }
 
   Serial.println("MQTT client connected.");
-  mqtt.loop();
 }
 
 void mqttPublish(char* topic, char* payload) {
   Serial.printf("About to publish MQTT message to topic %s:\n%s\n", topic, payload);
   mqttConnect();
 
-  mqtt.publish(topic, payload);
-  Serial.println("Message published!");
+  bool res = mqtt.publish(topic, payload, strlen(payload), true, 1);
+  if (!res) {
+    Serial.printf("Error when publishing msg: %d\n", mqtt.lastError());
+  } else {
+    Serial.println("Message published!");
+  }
+}
+
+void mqttShutdown() {
+  Serial.println("Need to shut down MQTT?");
+  if (mqtt.connected()) {
+    Serial.println("Shutting down MQTT connection");
+    mqtt.loop();
+    delay(10);
+
+    net.flush();
+    mqtt.disconnect();
+  }
 }
 
 void notifyMqtt(String sensorName, int lastValue, int newValue, int count) {
     char payload[255];
     sprintf(
       payload,
-      "{ \"deployment\": \"%s\", \"sensor\": \"%s\", \"status\": %d, \"prevStatus\": %d, \"changes\": %d, \"millis\": %d, \"resets\": %d }",
-      DEPLOYMENT_NAME.c_str(),
+      "{ \"sensor\": \"%s\", \"status\": %d, \"prevStatus\": %d, \"resets\": %d }",
       sensorName.c_str(),
       newValue,
       lastValue,
-      count,
-      (int)millis(),
       reset_counter
     );
     char topic[100];
@@ -125,7 +144,7 @@ void setup() {
   if (state.loadFromRTC()) {
     // warm boot
     Serial.println("Waking up from deep sleep...");
-    state.debugOutputRTCVars();
+    // state.debugOutputRTCVars();
 
   } else {
     Serial.println("Running a cold boot.");
@@ -155,7 +174,11 @@ void loop() {
   Serial.println("Saving new state to RTC memory...");
   state.saveToRTC();
 
-  // Deep sleep for 1 second
+  // Deep sleep for 10 seconds
+  mqttShutdown();
+  WiFi.mode(WIFI_OFF);
   Serial.println("Going to deep sleep!\n\n\n");
-  system_deep_sleep_instant(10000 * 1000);
+
+  // Sleep for 10 seconds:
+  system_deep_sleep_instant(10 * 1000 * 1000);
 }
