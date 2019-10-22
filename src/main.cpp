@@ -13,6 +13,7 @@ RTCVars state;
 const int SERIAL_SPEED = 115200;
 const char* MQTT_HOST = "192.168.0.10";
 const String DEPLOYMENT_NAME = "eggleo";
+const String SENSOR_NAME = String("ESP") + String(ESP.getChipId());
 
 int reset_counter;
 
@@ -23,15 +24,9 @@ Sensor sensors[NO_SENSORS] = {
   Sensor("livingroom-left", D5, D6)
 };
 
-void messageReceived(String &topic, String &payload) {
-  Serial.println("Received: " + topic + ":");
-  Serial.println(payload);
-  Serial.print("----\n");
-}
-
 void wifiConnect() {
   if (!WiFi.isConnected()) {
-    Serial.println("Need to connect to WiFi ...");
+    Serial.println("Connecting to Wifi");
   }
 
   while (!WiFi.isConnected()) {
@@ -43,7 +38,6 @@ void wifiConnect() {
 
 void mqttConnect() {
   if (mqtt.connected()) {
-    Serial.println("MQTT already connected, skipping this...");
     return;
   }
 
@@ -51,10 +45,9 @@ void mqttConnect() {
 
   Serial.printf("Attempting to connect to %s\n", MQTT_HOST);
   mqtt.begin(MQTT_HOST, net);
-  mqtt.onMessage(messageReceived);
 
   while (!mqtt.connected()) {
-    mqtt.connect(DEPLOYMENT_NAME.c_str(), "try", "try");
+    mqtt.connect(SENSOR_NAME.c_str(), "try", "try");
     Serial.print(".");
     delay(1000);
   }
@@ -66,7 +59,7 @@ void mqttPublish(char* topic, char* payload) {
   Serial.printf("About to publish MQTT message to topic %s:\n%s\n", topic, payload);
   mqttConnect();
 
-  bool res = mqtt.publish(topic, payload, strlen(payload), true, 1);
+  bool res = mqtt.publish(topic, payload, strlen(payload), false, 1);
   if (!res) {
     Serial.printf("Error when publishing msg: %d\n", mqtt.lastError());
   } else {
@@ -75,7 +68,6 @@ void mqttPublish(char* topic, char* payload) {
 }
 
 void mqttShutdown() {
-  Serial.println("Need to shut down MQTT?");
   if (mqtt.connected()) {
     Serial.println("Shutting down MQTT connection");
     mqtt.loop();
@@ -105,14 +97,13 @@ void notifyMqtt(String sensorName, int lastValue, int newValue, int count) {
 void sendSystemHealth() {
   Serial.println("Sending system health ...");
   char topic[100];
-  sprintf(topic, "sensor/%s/%s", DEPLOYMENT_NAME.c_str(), sensors[0].name.c_str());
+  sprintf(topic, "sensor/%s/%s", DEPLOYMENT_NAME.c_str(), SENSOR_NAME.c_str());
 
   char payload[255];
   sprintf(
     payload,
-    "{ \"deployment\": \"%s\", \"sensor\": \"%s\", \"resets\": %d, \"voltage\": %d }",
-    DEPLOYMENT_NAME.c_str(),
-    sensors[0].name.c_str(),
+    "{ \"sensor\": \"%s\", \"resets\": %d, \"voltage\": %d }",
+    SENSOR_NAME.c_str(),
     reset_counter,
     ESP.getVcc()
   );
